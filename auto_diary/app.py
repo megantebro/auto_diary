@@ -4,9 +4,6 @@ from auto_diary.ui.main_view import AutoDiaryView
 
 
 
-
-
-
 def main(page: ft.Page):
     page.title = "AutoDiary — 前日ビュー"
     page.window_width = 1000

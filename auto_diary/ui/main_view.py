@@ -1,13 +1,18 @@
 from datetime import datetime, timedelta
+from turtle import onclick
 from typing import Optional
 import flet as ft
 
-from auto_diary.config import DATE_FMT
+from auto_diary.config import DATE_FMT,SS_DIR
 from auto_diary.core.db import init_db
 from auto_diary.core.diary import get_entry, upsert_entry
 from auto_diary.core.screenshots import list_day_images
 from auto_diary.services.autogen import generate_from_images
 
+import os, sys, subprocess
+from pathlib import Path
+import threading
+from auto_diary.ai_writer import write_diary_for_date
 
 class AutoDiaryView:
     def __init__(self):
@@ -46,6 +51,11 @@ class AutoDiaryView:
         self.dp = ft.DatePicker(on_change=self.on_pick_date, first_date=datetime(2020, 1, 1), last_date=datetime(2100, 1, 1))
         pick_btn = ft.ElevatedButton("日付を指定", on_click=lambda _: self.page.open(self.dp))
 
+        open_folder_btn = ft.TextButton("📁 今日のフォルダを開く", on_click=self.on_open_folder)
+
+        
+
+
         header = ft.Row([
             self.date_text,
             ft.Container(width=12),
@@ -56,6 +66,7 @@ class AutoDiaryView:
             today_btn,
             pick_btn,
             self.dp,
+            open_folder_btn
         ], alignment=ft.MainAxisAlignment.START)
 
         # images
@@ -99,6 +110,8 @@ class AutoDiaryView:
         page.add(header, ft.ResponsiveRow([ft.Column(col=12, controls=[image_card]), ft.Column(col=12, controls=[body_card])]))
         self.load_day(self.current)
 
+        
+
     # -------- data binding --------
     def load_day(self, d):
         date_s = self.date_str(d)
@@ -124,17 +137,26 @@ class AutoDiaryView:
         if self.image_grid:
             self.image_grid.controls.clear()
             for p in imgs:
-                self.image_grid.controls.append(
-                    ft.Container(
-                        content=ft.Image(src=str(p), width=160, height=100, fit=ft.ImageFit.COVER),
+                tile = ft.GestureDetector(
+                    mouse_cursor=ft.MouseCursor.CLICK,              # ← カーソルはここで
+                    on_tap=lambda e, path=p: self.open_image(path),# ← クリックで開く
+                    content=ft.Container(
+                        content=ft.Image(
+                            src=str(p),
+                            width=160,
+                            height=100,
+                            fit=ft.ImageFit.COVER,
+                        ),
                         tooltip=p.name,
                         width=160,
                         height=110,
                         padding=5,
                         bgcolor="#00000014",
                         border_radius=8,
-                    )
+                        ink=True,                                  # 押した感のインク効果
+                    ),
                 )
+                self.image_grid.controls.append(tile)
 
         if self.body_field:
             self.body_field.value = entry.body
@@ -194,3 +216,73 @@ class AutoDiaryView:
         if body and self.body_field:
             self.body_field.value = body
             self.page.update()
+    # その日のフォルダパス
+    def day_dir_path(self, d) -> Path:
+        return (SS_DIR / d.strftime(DATE_FMT)).resolve()
+
+    # 「フォルダを開く」押下時
+    def on_open_folder(self, _):
+        day_dir = self.day_dir_path(self.current)
+        day_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            if sys.platform.startswith("win"):
+                os.startfile(str(day_dir))  # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(day_dir)])
+            else:
+                subprocess.Popen(["xdg-open", str(day_dir)])
+        except Exception:
+            pass
+    def open_image(self, img_path: Path):
+        p = Path(img_path).resolve()
+
+        if sys.platform.startswith("win"):
+            try:
+                os.startfile(str(p))  # 既定アプリで開く（Windows固有）
+                return
+            except OSError:
+                # 予備: cmdのstartで開く（パスに空白/UNCでも動きやすい）
+                subprocess.run(["cmd", "/c", "start", "", str(p)], shell=True)
+                return
+
+        # mac / Linux の予備（必要なら残す）
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", str(p)])
+        else:
+            subprocess.Popen(["xdg-open", str(p)])
+
+
+    def on_autogen(self, e):
+        """「画像から自動生成」ボタン押下時の処理"""
+        def run():
+            try:
+                # ステータス更新
+                self.page.snack_bar = ft.SnackBar(ft.Text("AIが日記を生成しています..."))
+                self.page.snack_bar.open = True
+                self.page.update()
+
+                out = write_diary_for_date(datetime.now())
+                # 終了後にファイルを開く
+                self.page.snack_bar = ft.SnackBar(ft.Text(f"完了しました: {out.name}"))
+                self.page.snack_bar.open = True
+                self.page.update()
+
+                # Windowsの既定アプリで開く
+                import os, sys, subprocess
+                if sys.platform.startswith("win"):
+                    os.startfile(str(out))  # type: ignore
+                elif sys.platform == "darwin":
+                    subprocess.Popen(["open", str(out)])
+                else:
+                    subprocess.Popen(["xdg-open", str(out)])
+
+            except Exception as ex:
+                self.page.snack_bar = ft.SnackBar(ft.Text(f"生成エラー: {ex}"))
+                self.page.snack_bar.open = True
+                self.page.update()
+
+        # スレッド化でUIが固まらないようにする
+        threading.Thread(target=run, daemon=True).start()
+        
+
+   

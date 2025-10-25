@@ -2,10 +2,7 @@ from pathlib import Path
 from datetime import datetime
 
 # config.py のあるフォルダからプロジェクトルートを確定させる
-APP_DIR = Path(__file__).resolve().parent.parent
-
-# Auto_Diary をルートとして固定
-ROOT_DIR = APP_DIR if APP_DIR.name == "Auto_Diary" else APP_DIR.parent / "Auto_Diary"
+ROOT_DIR = Path(__file__).resolve().parents[1]
 
 DATA_DIR = ROOT_DIR / "data"
 DB_PATH = DATA_DIR / "autodiary.db"
