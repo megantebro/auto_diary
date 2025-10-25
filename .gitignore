@@ -12,3 +12,4 @@ wheels/
 auto_diary/core/.env
 .env
 *.env
+screenshots

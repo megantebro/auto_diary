@@ -1,11 +1,13 @@
 from __future__ import annotations
+from operator import truediv
 import os, base64, traceback
 from pathlib import Path
 from datetime import datetime
 from typing import List
 from openai import OpenAI
-
 from .config import SS_DIR, DATE_FMT
+
+from auto_diary.core.diary import upsert_entry
 
 MODEL = "gpt-4o-mini"
 
@@ -26,7 +28,6 @@ def _build_message_content(date_str: str, images: list[Path]):
         "text": (
             "あなたは日本語で丁寧に日記を要約するアシスタントです。"
             f"対象日: {date_str}\n"
-            "出力はMarkdownで:\n"
             "## 今日のまとめ（日本語）\n- 要約（3〜6行）\n- ハイライト（3〜6項目）\n"
             "## Quick Summary (English)\n- 2–4 sentences\n"
             "## タスク候補\n- 明日以降のTODOを2–4件\n"
@@ -34,7 +35,7 @@ def _build_message_content(date_str: str, images: list[Path]):
     }]
     for p in images:
         parts.append({
-            "type": "input_image",
+            "type": "image_url",
             "image_url": {"url": _to_data_url(p)}
         })
     print(parts)
@@ -73,7 +74,4 @@ def write_diary_for_date(date: datetime, limit_images: int = 8) -> Path:
     text = resp.choices[0].message.content
     if not text:
         raise RuntimeError("Empty response content from API")
-
-    out_path = day_dir / "diary.md"
-    out_path.write_text(text, encoding="utf-8")
-    return out_path
+    return text

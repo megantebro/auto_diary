@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from turtle import onclick
 from typing import Optional
 import flet as ft
@@ -7,7 +7,6 @@ from auto_diary.config import DATE_FMT,SS_DIR
 from auto_diary.core.db import init_db
 from auto_diary.core.diary import get_entry, upsert_entry
 from auto_diary.core.screenshots import list_day_images
-from auto_diary.services.autogen import generate_from_images
 
 import os, sys, subprocess
 from pathlib import Path
@@ -35,7 +34,7 @@ class AutoDiaryView:
         return d.strftime(DATE_FMT)
 
     def can_edit(self, d) -> bool:
-        return d == self.yesterday
+        return d == self.yesterday or d == self.today
 
     # -------- lifecycle --------
     def mount(self, page: ft.Page):
@@ -120,12 +119,20 @@ class AutoDiaryView:
         imgs = list_day_images(date_s)
 
         # auto-gen if yesterday & empty & has images
-        if d == self.yesterday:
-            if entry and (entry.body.strip() == "") and imgs:
-                gen = generate_from_images(date_s, imgs)
-                if gen:
-                    upsert_entry(date_s, gen, ai_generated=True)
-                    entry = get_entry(date_s)
+    
+        if (entry == None or (entry.body.strip() == "")) and len(imgs):
+            snackbar = ft.SnackBar(content=ft.Text(f"生成しています"))
+            snackbar.open = True
+            self.page.update()
+            gen = write_diary_for_date(d)
+            if gen:
+                upsert_entry(date_s, gen, ai_generated=True)
+                self.body_field.value =gen
+                entry = get_entry(date_s)
+            else:
+                snackbar = ft.SnackBar(content=ft.Text(f"生成に失敗しました。"))
+                snackbar.open = True
+                self.page.update()
 
         if not entry:
             from ..core.diary import Entry
@@ -212,7 +219,7 @@ class AutoDiaryView:
                 self.page.snack_bar.open = True
                 self.page.update()
             return
-        body = generate_from_images(date_s, imgs)
+        body = write_diary_for_date(date_s)
         if body and self.body_field:
             self.body_field.value = body
             self.page.update()
@@ -257,28 +264,28 @@ class AutoDiaryView:
         def run():
             try:
                 # ステータス更新
-                self.page.snack_bar = ft.SnackBar(ft.Text("AIが日記を生成しています..."))
-                self.page.snack_bar.open = True
+                snackbar = ft.SnackBar(content=ft.Text("AIが日記を生成しています。"))
+                snackbar.open = True
+                self.page.overlay.append(snackbar)  # ← overlay に追加
+
                 self.page.update()
 
-                out = write_diary_for_date(datetime.now())
+                out = write_diary_for_date(datetime.now() - timedelta(days=1))
                 # 終了後にファイルを開く
-                self.page.snack_bar = ft.SnackBar(ft.Text(f"完了しました: {out.name}"))
-                self.page.snack_bar.open = True
+
+                snackbar = ft.SnackBar(content=ft.Text(f"完了しました:{out}"))
+                snackbar.open = True
                 self.page.update()
 
-                # Windowsの既定アプリで開く
-                import os, sys, subprocess
-                if sys.platform.startswith("win"):
-                    os.startfile(str(out))  # type: ignore
-                elif sys.platform == "darwin":
-                    subprocess.Popen(["open", str(out)])
-                else:
-                    subprocess.Popen(["xdg-open", str(out)])
+                upsert_entry(self.date_str(datetime.now() - timedelta(1)),out,True)
+                self.body_field.value = out
+                self.page.update()
 
+                
             except Exception as ex:
-                self.page.snack_bar = ft.SnackBar(ft.Text(f"生成エラー: {ex}"))
-                self.page.snack_bar.open = True
+
+                snackbar = ft.SnackBar(ft.Text(f"生成エラー: {ex}"))
+                snackbar.open = True
                 self.page.update()
 
         # スレッド化でUIが固まらないようにする
