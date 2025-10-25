@@ -28,7 +28,7 @@ from pathlib import Path
 from PIL import Image  # Pillow
 import mss
 
-from .config import SS_DIR, DATE_FMT
+from .config import SS_DIR, DATE_FMT,TARGET_MONITOR
 
 
 def _timestamp_filename(ext: str) -> str:
@@ -43,7 +43,7 @@ def capture_once(output_dir: Path, fmt: str = "png", quality: int = 90) -> Path:
 
     with mss.mss() as sct:
         # mon=-1 は仮想全体（全モニタ含む）
-        sct_img = sct.grab(sct.monitors[-1])
+        sct_img = sct.grab(sct.monitors[TARGET_MONITOR])
         img = Image.frombytes("RGB", sct_img.size, sct_img.rgb)
         if fmt.lower() == "jpg" or fmt.lower() == "jpeg":
             img.save(out_path, format="JPEG", quality=int(quality))

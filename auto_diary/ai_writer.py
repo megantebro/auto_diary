@@ -2,10 +2,10 @@ from __future__ import annotations
 from operator import truediv
 import os, base64, traceback
 from pathlib import Path
-from datetime import datetime
+from datetime import date, datetime
 from typing import List
 from openai import OpenAI
-from .config import SS_DIR, DATE_FMT
+from .config import SS_DIR, DATE_FMT,AI_PRONPT
 
 from auto_diary.core.diary import upsert_entry
 
@@ -26,11 +26,7 @@ def _build_message_content(date_str: str, images: list[Path]):
     parts = [{
         "type": "text",
         "text": (
-            "あなたは日本語で丁寧に日記を要約するアシスタントです。"
-            f"対象日: {date_str}\n"
-            "## 今日のまとめ（日本語）\n- 要約（3〜6行）\n- ハイライト（3〜6項目）\n"
-            "## Quick Summary (English)\n- 2–4 sentences\n"
-            "## タスク候補\n- 明日以降のTODOを2–4件\n"
+            AI_PRONPT.format(date_str=date_str)
         ),
     }]
     for p in images:
